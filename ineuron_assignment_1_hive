@@ -1,0 +1,141 @@
+1) Downloaded vehicle sales data -> https://github.com/shashank-mishra219/Hive-Class/blob/main/sales_order_data.csv
+
+2) hdfs dfs -put <file location of sales data> <hdfslocation>
+
+3) Create a internal hive table "sales_order_csv" which will store csv data sales_order_csv .. make sure to skip header row while creating table
+
+create table sales_order_csv(
+order_number INT,
+quantity_ordered INT,
+price_each FLOAT,
+order_line_num INT,
+sales    FLOAT,
+status    STRING,
+quart_id   INT,
+month_id INT,
+year_id  INT,
+product_line STRING, 
+msrp INT,  
+product_code   STRING,
+phone STRING,
+city   STRING,
+state STRING,
+postal_code  STRING,
+country STRING,
+territory STRING,
+contact_last_name STRING,
+contact_first_name STRING,
+deal_size STRING
+)
+row format delimited 
+fields terminated by "," 
+TBLPROPERTIES ("skip.header.line.count"="1");
+
+
+4. Load data from hdfs path into "sales_order_csv" 
+
+LOAD Data inpath "hdfs_location"
+
+5. Create an internal hive table which will store data in ORC format "sales_order_orc"
+
+create table sales_order_orc(
+order_number INT,
+quantity_ordered INT,
+price_each FLOAT,
+order_line_num INT,
+sales    FLOAT,
+status    STRING,
+quart_id   INT,
+month_id INT,
+year_id  INT,
+product_line STRING, 
+msrp INT,  
+product_code   STRING,
+phone STRING,
+city   STRING,
+state STRING,
+postal_code  STRING,
+country STRING,
+territory STRING,
+contact_last_name STRING,
+contact_first_name STRING,
+deal_size STRING
+)
+stored as ORC;
+
+
+6. Load data from "sales_order_csv" into "sales_order_orc"
+
+from sales_order_csv insert overwrite table sales_order_orc select *;
+
+Perform below menioned queries on "sales_order_orc" table :
+
+a. Calculate total sales per year:
+  SELECT year_id, sum(sales) as total_sales from sales_order_orc GROUP BY year_id;
+
+b. Find a product for which maximum orders were placed
+
+Method1:
+--------------------------
+SELECT product_code , sum(quantity_ordered) AS total_quantity_ordered FROM sales_order_orc GROUP BY product_code ORDER BY total_quantity_ordered DESC limit 1;
+         
+Method 2:
+--------------------------        
+SELECT * FROM (SELECT product_code,
+       sum(quantity_ordered) ,
+       dense_rank() over(
+                   ORDER BY sum(quantity_ordered) DESC) as ranker
+FROM sales_order_orc GROUP BY product_code) AS temp WHERE ranker = 1 ;
+
+
+c. Calculate the total sales for each quarter
+
+SELECT year_id, quart_id, sum(sales) AS total_sales FROM sales_order_orc GROUP BY year_id, quart_id;
+
+d. In which quarter sales was minimum
+
+Method 1 : 
+--------------------------------
+SELECT year_id,
+       quart_id,
+       total_sales
+FROM
+  (SELECT year_id,
+          quart_id,
+          sum(sales) as_total_sales,
+          dense_rank() over(
+                            ORDER BY sum(sales) ASC) AS ranks
+   FROM sales_order_orc
+   GROUP BY year_id,
+            quart_id) AS test
+WHERE ranks=1;
+
+Method 2:
+--------------------------------
+SELECT year_id, quart_id, sum(sales) as total_sales FROM sales_order_orc GROUP BY year_id, quart_id;
+
+e. In which country sales was maximum and in which country sales was minimum
+
+select country, sum(sales) AS total_sales from sales_order_orc GROUP BY country ORDER BY total_sales LIMIT 1;
+select country, sum(sales) AS total_sales from sales_order_orc GROUP BY country ORDER BY total_sales DESC LIMIT 1;
+
+f. Calculate quartelry sales for each city
+
+SELECT city, year_id, quart_id, sum(sales) AS total_sales from sales_order_orc GROUP BY city, year_id, quart_id;
+
+h. Find a month for each year in which maximum number of quantities were sold
+
+SELECT year_id,
+       month_id,
+       total_quantity_ordered
+FROM
+  (SELECT year_id,
+          month_id,
+          sum(quantity_ordered) AS total_quantity_ordered,
+          dense_rank() over(partition BY year_id
+                            ORDER BY sum(quantity_ordered) DESC) AS ranks
+   FROM sales_order_orc
+   GROUP BY year_id,
+            month_id) AS max_monthly_quantity
+WHERE ranks =1
+
